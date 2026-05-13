@@ -1,0 +1,9 @@
+# To use vendored dependencies (offline builds), run:
+#   cargo vendor
+# Then uncomment the lines below:
+#
+# [source.crates-io]
+# replace-with = "vendored-sources"
+#
+# [source.vendored-sources]
+# directory = "vendor"

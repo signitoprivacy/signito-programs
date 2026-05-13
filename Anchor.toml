@@ -1,0 +1,25 @@
+[features]
+seeds = true
+skip-lint = false
+
+[programs.localnet]
+signito_vault = "9PibgJMUa3zXVd7YWJEJ8UQ14A7z2J3qZ7QDvRW38XeD"
+
+[programs.devnet]
+signito_vault = "9PibgJMUa3zXVd7YWJEJ8UQ14A7z2J3qZ7QDvRW38XeD"
+
+[programs.mainnet]
+signito_vault = "9PibgJMUa3zXVd7YWJEJ8UQ14A7z2J3qZ7QDvRW38XeD"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "Devnet"
+wallet = "/home/runner/workspace/programs/deployer-keypair.json"
+
+[scripts]
+test = "pnpm ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+
+[workspace]
+members = ["signito-vault"]

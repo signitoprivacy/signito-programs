@@ -1,0 +1,22 @@
+# Build artifacts
+target/
+*.so
+*.d
+
+# Keypairs & secrets (NEVER commit)
+*keypair*.json
+deployer-*.json
+*.pem
+*.key
+
+# Deploy packages
+*.zip
+
+# Node
+node_modules/
+dist/
+
+# Editor
+.DS_Store
+.vscode/
+*.swp
