@@ -1,12 +1,12 @@
 # signito-programs
 
+**Website:** [signito.org](https://signito.org)
+
 Signito Vault — on-chain Anchor/Rust program powering the Signito privacy protocol on Solana.
 
 **Program ID:** `9PibgJMUa3zXVd7YWJEJ8UQ14A7z2J3qZ7QDvRW38XeD`  
 **Token Standard:** SPL Token-2022 with NonTransferable extension  
 **Framework:** Anchor 0.31.1  
-**Website:** [signito.org](https://signito.org)  
-**Docs:** [docs.signito.org](https://docs.signito.org)
 
 ---
 
