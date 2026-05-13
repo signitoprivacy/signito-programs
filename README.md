@@ -4,7 +4,9 @@ Signito Vault — on-chain Anchor/Rust program powering the Signito privacy prot
 
 **Program ID:** `9PibgJMUa3zXVd7YWJEJ8UQ14A7z2J3qZ7QDvRW38XeD`  
 **Token Standard:** SPL Token-2022 with NonTransferable extension  
-**Framework:** Anchor 0.31.1
+**Framework:** Anchor 0.31.1  
+**Website:** [signito.org](https://signito.org)  
+**Docs:** [docs.signito.org](https://docs.signito.org)
 
 ---
 
@@ -83,13 +85,8 @@ avm install 0.31.1 && avm use 0.31.1
 ## Build & Test
 
 ```bash
-# Install JS test dependencies
 pnpm install
-
-# Build the program
 anchor build
-
-# Run tests against localnet
 solana-test-validator --reset &
 anchor test --skip-local-validator
 ```
@@ -120,15 +117,13 @@ See [DEPLOY.md](./DEPLOY.md) for full mainnet deployment instructions.
 
 ---
 
-## Vendor Dependencies
+## Related Repositories
 
-The `vendor/` directory is not committed. To restore for offline builds:
-
-```bash
-cargo vendor
-```
-
-See [VENDOR.md](./VENDOR.md) for details.
+| Repo | Description |
+|---|---|
+| [signito-app](https://github.com/signitoprivacy/signito-app) | Shield dApp frontend |
+| [signito-api](https://github.com/signitoprivacy/signito-api) | Backend API server |
+| [signito-docs](https://github.com/signitoprivacy/signito-docs) | Protocol documentation |
 
 ---
 
