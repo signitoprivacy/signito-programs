@@ -1,131 +1,65 @@
-# signito-programs
+# signito-programs-devnet
 
 **Website:** [signito.org](https://signito.org)
 
-Signito Vault — on-chain Anchor/Rust program powering the Signito privacy protocol on Solana.
+Base chain EVM smart contracts powering the Signito privacy protocol.
 
-**Program ID:** `9PibgJMUa3zXVd7YWJEJ8UQ14A7z2J3qZ7QDvRW38XeD`  
-**Token Standard:** SPL Token-2022 with NonTransferable extension  
-**Framework:** Anchor 0.31.1  
+**Network:** Base Sepolia (chain ID 84532)
+**ShieldedETH (sETH):** `0x5e112428697dA966dC1603eA5cB96B71508c3a03`
+**SignitoPool:** `0x8C7Eeb11C7c8D58b0d12A772B146313aaAAEaBdb`
+**Relayer:** `0xf70494e69aE7090dB21179d2412D76566959B43c`
+**Framework:** Hardhat, Solidity 0.8.24
 
 ---
 
-## Features
+## Contracts
 
-| Feature | Description |
+### ShieldedETH (sETH)
+
+Non-transferable ERC-20 backed 1:1 by ETH in the pool. Mirrors SPL Token-2022 NonTransferable + PermanentDelegate from the Solana program.
+
+- Minted when a user shields ETH
+- Burned when a user unshields ETH
+- Cannot be transferred -- only the pool contract can mint or burn
+
+### SignitoPool
+
+Privacy pool contract implementing the same three-feature architecture as the Solana program.
+
+| Function | Description |
 |---|---|
-| **SafeVault** | OTS (One-Time Signature) hash-chain vault. Mint sSOL, shield SOL, withdraw with preimage reveals. |
-| **StealthSend** | Commitment-nullifier pool. Deposit anonymously, withdraw to a fresh address with no on-chain link. |
-| **AirSign** | Ed25519-signed offline vouchers. Issue, share via QR/NFC, claim without internet. |
+| `shield()` | User deposits ETH, receives sETH at a random stokenAddress |
+| `batchAdminMint()` | Relayer mints phantom sETH to 20 decoy addresses (no ETH backing) |
+| `burnAndQueue()` | Relayer burns real + 20 decoy sETH simultaneously, no recipient in TX |
+| `processQueue()` | Relayer sends ETH to recipient in a separate TX (zero on-chain link) |
+| `refreshOts()` | Rotate the OTS hash chain |
+| `mintAirsign()` | Burn sETH into an ECDSA-keyed offline voucher |
+| `claimAirsign()` | Verify eth_personal_sign and release ETH |
 
----
+## Privacy Model
 
-## Program Structure
+- **burnAndQueue** and **processQueue** are separate transactions with zero accounts in common
+- Both are submitted via Flashbots Protect on mainnet (private mempool)
+- OTS preimage is verified off-chain by the API server
+- stokenAddress is a random address derived client-side, never linked to the user's wallet
+- **Decoy mix layer**: 20 phantom sETH accounts are minted via `batchAdminMint` after every real shield. When the user unshields, all 21 accounts burn in the same transaction. Observer cannot identify the real account.
 
-```
-signito-vault/
-  src/
-    instructions/
-      initialize_vault.rs   Create vault PDA, mint sSOL (Token-2022 + NonTransferable)
-      deposit.rs            Thaw sSOL account, mint additional sSOL, re-freeze
-      unshield.rs           OTS verify, burn sSOL, release SOL to destination
-      refresh_ots.rs        Reset OTS chain tip on existing vault
-      convert_to_airtoken.rs  Convert sSOL → aSOL for AirSign vouchers
-      claim_voucher.rs      Ed25519 verify via instructions sysvar, burn aSOL, release SOL
-      close_vault.rs        Close empty vault, reclaim rent
-    state/
-      vault.rs              VaultState account struct
-    errors.rs               SignitoError enum
-    constants.rs            Program constants
-    lib.rs                  Entry point and instruction dispatch
-Anchor.toml
-Cargo.toml
-Cargo.lock
-DEPLOY.md                   Full build and deployment guide
-```
-
----
-
-## SafeVault: OTS Hash Chain
+## OTS Chain
 
 ```
-H0  = PBKDF2(vaultCode, walletAddress, 100_000 iterations, SHA-256)
-H1  = SHA-256(H0)
-H2  = SHA-256(H1)
-...
-H32 = SHA-256(H31)   ← stored on-chain as current_ots_hash (chain tip)
-
-Withdrawal 1: client reveals H31
-  Program verifies: SHA-256(H31) == H32
-  Program updates tip → H31, decrements chain_depth
-
-Withdrawal 2: client reveals H30
-  Program verifies: SHA-256(H30) == H31
-  ...continues until chain_depth reaches 0
+H0 = PBKDF2(vaultCode, walletAddress, 100_000 iters, SHA-256)
+H_n = keccak256(H_{n-1})
+chain tip = H_chainDepth, stored in userStates[stokenAddress].currentOtsHash
+To prove: reveal H_{n-1}, contract checks keccak256(preimage) == currentOtsHash
 ```
 
-The vault code (passphrase) **never leaves the browser**. Only the PBKDF2-derived hash tip is stored on-chain.
+## Build and Deploy
 
----
-
-## Prerequisites
-
-```bash
-# Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Solana CLI 1.18+
-sh -c "$(curl -sSfL https://release.solana.com/v1.18.26/install)"
-
-# Anchor CLI 0.31.1
-cargo install --git https://github.com/coral-xyz/anchor avm --locked
-avm install 0.31.1 && avm use 0.31.1
+```sh
+npm install
+npx hardhat compile
+npx hardhat run scripts/deploy.ts --network base-sepolia
 ```
-
-## Build & Test
-
-```bash
-pnpm install
-anchor build
-solana-test-validator --reset &
-anchor test --skip-local-validator
-```
-
-## Deploy to Devnet
-
-```bash
-solana config set --url https://api.devnet.solana.com
-solana airdrop 2
-anchor build
-anchor deploy
-```
-
-See [DEPLOY.md](./DEPLOY.md) for full mainnet deployment instructions.
-
----
-
-## VaultState Account
-
-| Field | Type | Description |
-|---|---|---|
-| `owner` | Pubkey | Vault owner wallet |
-| `current_ots_hash` | [u8; 32] | Current OTS chain tip H_n |
-| `chain_depth` | u32 | Remaining withdrawal uses |
-| `mint_stoken` | Pubkey | sSOL Token-2022 mint |
-| `total_deposited` | u64 | Lamports held in vault PDA |
-| `bump` | u8 | PDA bump seed |
-
----
-
-## Related Repositories
-
-| Repo | Description |
-|---|---|
-| [signito-app](https://github.com/signitoprivacy/signito-app) | Shield dApp frontend |
-| [signito-api](https://github.com/signitoprivacy/signito-api) | Backend API server |
-| [signito-docs](https://github.com/signitoprivacy/signito-docs) | Protocol documentation |
-
----
 
 ## License
 

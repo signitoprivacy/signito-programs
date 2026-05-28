@@ -1,24 +1,22 @@
 {
-  "name": "@signito/programs",
-  "version": "0.1.0",
+  "name": "@workspace/contracts",
+  "version": "0.0.0",
   "private": true,
   "scripts": {
-    "test": "anchor test",
-    "build": "anchor build",
-    "deploy:local": "anchor deploy",
-    "deploy:mainnet": "anchor deploy --provider.cluster mainnet"
-  },
-  "dependencies": {
-    "@coral-xyz/anchor": "^0.31.1"
+    "compile": "npx hardhat compile",
+    "test": "npx hardhat test",
+    "deploy:sepolia": "npx hardhat run scripts/deploy.ts --network base-sepolia",
+    "deploy:mainnet": "npx hardhat run scripts/deploy.ts --network base-mainnet",
+    "verify:sepolia": "npx hardhat run scripts/verify.ts --network base-sepolia",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@solana/spl-token": "^0.4.9",
-    "@types/bn.js": "^5.1.6",
-    "@types/chai": "^4.3.20",
-    "@types/mocha": "^10.0.10",
-    "chai": "^4.4.1",
-    "mocha": "^10.8.2",
-    "ts-mocha": "^10.0.0",
-    "typescript": "^5.7.3"
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.3.0",
+    "@types/node": "^22.0.0",
+    "dotenv": "^16.5.0",
+    "hardhat": "^2.22.17",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
   }
 }
