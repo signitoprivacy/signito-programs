@@ -22,11 +22,13 @@ import "./ShieldedETH.sol";
 //     claimAirsign()  -- relayer verifies eth_personal_sign voucher, releases ETH from escrow
 //
 // Privacy guarantees:
-//   - burnAndQueue receives one shuffled array of 21 stokenAddresses (1 real + 20 decoys).
-//     Observer cannot distinguish the real burn from the 20 phantom burns -- all identical amounts.
+//   - shield() mints sETH to BOTH stokenAddress (random derived) AND msg.sender (user's wallet).
+//     batchAdminMint adds 20 phantom decoy addresses. Total: 22 addresses hold sETH.
+//   - burnAndQueue receives a shuffled array of all 22 addresses. No explicit stokenAddress param.
+//     Real account is at a RANDOM position -- contract finds it via OTS preimage match in the loop.
+//     Observer reading calldata sees 22 identical-looking addresses with no positional indicator.
 //   - burnAndQueue and processQueue are separate transactions with zero common accounts.
 //   - Both are submitted by the relayer via Flashbots (private mempool) to prevent correlation.
-//   - OTS preimage is verified off-chain by the API server and never included in public calldata.
 //   - stokenAddress is a random address derived client-side, never linked to the user's wallet on-chain.
 //   - Phantom sETH has no ETH backing: pool.deposited tracks only real deposits. No collateral risk.
 //
@@ -103,6 +105,8 @@ contract SignitoPool {
     //   never the user's actual wallet address. This breaks the on-chain wallet-to-vault link.
     // initialOtsHash: keccak256^chainDepth(PBKDF2(vaultCode, walletAddress)) -- the chain tip.
     // Subsequent deposits to the same stokenAddress just increase deposited balance.
+    // Privacy: sETH is minted to BOTH stokenAddress AND msg.sender so the user's wallet
+    //   is indistinguishable from the 20 batchAdminMint decoys on unshield.
     function shield(
         address stokenAddress,
         bytes32 initialOtsHash,
@@ -122,6 +126,12 @@ contract SignitoPool {
 
         state.deposited += msg.value;
         shETH.mint(stokenAddress, msg.value);
+
+        // Also mint sETH to the user's actual wallet so it appears in the burn set
+        // alongside the 20 decoys -- observer cannot distinguish real from phantom.
+        if (msg.sender != stokenAddress) {
+            shETH.mint(msg.sender, msg.value);
+        }
 
         emit Shielded(stokenAddress, msg.value);
     }
@@ -145,46 +155,51 @@ contract SignitoPool {
     }
 
     // Called by relayer ONLY, submitted via Flashbots private TX.
-    // Verifies OTS preimage, burns sETH from all accounts in the shuffled mix array.
-    // allBurnAccounts: shuffled array of 21 stokenAddresses (1 real at random position + 20 decoys).
-    //   All accounts burn the same `amount`. Observer cannot tell which burn is the real one.
+    // allBurnAccounts: shuffled array of 22 addresses (stokenAddress + user wallet + 20 decoys),
+    //   in a RANDOM order chosen by the relayer. No explicit stokenAddress param in calldata.
+    //   Contract identifies the real account by finding the one whose OTS hash matches otsPreimage.
+    //   All 22 accounts burn the same amount -- observer cannot tell which is the real one.
     // CRITICAL: no recipient address in this TX -- zero on-chain link to processQueue().
-    // Recipient is passed to the relayer off-chain via HTTPS after this TX confirms.
     function burnAndQueue(
-        address stokenAddress,
         uint256 amount,
         bytes32 otsPreimage,
         address[] calldata allBurnAccounts
     ) external onlyRelayer {
-        UserState storage state = userStates[stokenAddress];
-        require(state.initialized, "not initialized");
-        require(state.chainDepth > 0, "chain exhausted");
         require(amount > 0, "zero amount");
+        require(allBurnAccounts.length > 0, "empty array");
+
+        // Find the real stokenAddress: the initialized account whose OTS hash matches.
+        // Real address is at a random position in the shuffled array -- no positional hint.
+        address stokenAddress;
+        bytes32 preimageHash = keccak256(abi.encodePacked(otsPreimage));
+        for (uint256 i = 0; i < allBurnAccounts.length; i++) {
+            address candidate = allBurnAccounts[i];
+            if (
+                candidate != address(0) &&
+                userStates[candidate].initialized &&
+                preimageHash == userStates[candidate].currentOtsHash
+            ) {
+                stokenAddress = candidate;
+                break;
+            }
+        }
+        require(stokenAddress != address(0), "no valid OTS in array");
+
+        UserState storage state = userStates[stokenAddress];
+        require(state.chainDepth > 0, "chain exhausted");
         require(amount <= state.deposited, "insufficient balance");
 
-        // OTS verification: keccak256(preimage) must equal stored hash
-        require(
-            keccak256(abi.encodePacked(otsPreimage)) == state.currentOtsHash,
-            "invalid OTS"
-        );
-
-        // Advance chain: revealed preimage becomes the new tip
+        // Advance OTS chain: revealed preimage becomes the new tip
         state.currentOtsHash = otsPreimage;
         state.chainDepth -= 1;
         state.deposited -= amount;
 
-        // Burn real sETH
-        shETH.burn(stokenAddress, amount);
-
-        // Burn all accounts in the shuffled mix array (real is already burned above via stokenAddress).
-        // Non-fatal: skip any account with insufficient balance (e.g. already burned or underfunded decoy).
+        // Burn all 22 accounts in one pass.
+        // Non-fatal: skip zero address or insufficient balance (underfunded decoy or already burned).
         for (uint256 i = 0; i < allBurnAccounts.length; i++) {
-            if (
-                allBurnAccounts[i] != address(0) &&
-                allBurnAccounts[i] != stokenAddress &&
-                shETH.balanceOf(allBurnAccounts[i]) >= amount
-            ) {
-                shETH.burn(allBurnAccounts[i], amount);
+            address acc = allBurnAccounts[i];
+            if (acc != address(0) && shETH.balanceOf(acc) >= amount) {
+                shETH.burn(acc, amount);
             }
         }
 
